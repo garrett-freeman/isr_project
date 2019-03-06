@@ -1,0 +1,227 @@
+import requests
+from requests import get
+from requests.exceptions import RequestException
+from contextlib import closing
+from bs4 import BeautifulSoup
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+import os
+from csv import writer
+
+#=====================================================================================================
+def fetchFromURL(url):
+
+    """
+    Attempt to fetch content from URL via HTTP GET request. If it's HTML/XML return otherwise
+    don't do anything
+
+    """
+
+    try:
+
+        with closing(get(url, stream=True)) as resp:
+
+            if is_good_response(resp):
+
+                return resp.content
+
+            else:
+
+                return None
+
+ 
+
+    except RequestException as e:
+
+        log_error('Error during request to {0}:{1}' . format(url, str(e)))
+
+        return None
+
+def is_good_response(resp):
+
+    """
+    Returns True if response looks like HTML
+    """
+
+    content_type = resp.headers['Content-Type'].lower()
+
+    return (resp.status_code == 200
+
+            and content_type is not None
+
+            and content_type.find('html') > -1)
+
+def log_error(e):
+
+    """
+    log those errors or you'll regret it later...
+    """
+
+    print(e)
+
+def get_target_urls(target): # edited: returns a list of urls
+
+    url_list = []
+    
+    """
+    Example of isolating different parent elements to gather subsequent URLs
+    """
+
+    soup = BeautifulSoup(target, 'html.parser')
+    for row in soup.find_all('td'):
+        
+        for link in row.find_all('a'):
+
+            url = link.get('href')
+            
+            url_list.append(url)
+
+   
+    return url_list
+
+def get_second_target(target): # Made this based off above
+    
+    url_list = []
+    
+    """
+    Example of isolating different parent elements to gather subsequent URLs
+    """
+
+    soup = BeautifulSoup(target, 'html.parser')
+    for row in soup.find_all('p'):
+        
+        for link in row.find_all('a'):
+
+            url = link.get('href')
+            
+            url_list.append(url)
+ 
+    return url_list
+
+def pull_text(target): # Strips html from webpage and saves to .txt file
+
+    # Pulls HTML from page
+    url = target    
+    r = requests.get(url)
+    page_text = r.text
+
+    # Formatting file name
+    filename = target
+    filename = filename.replace('http://shakespeare.mit.edu/', "")
+    filename = filename.replace('.html', '')
+    filename = filename.replace("/", "_")
+    filename = filename.replace(".", "-")
+
+    filename = filename + ".txt"
+
+    # Create file with formatted name
+    f = open(filename, 'w')
+
+    soup = BeautifulSoup(page_text, 'html.parser')
+
+    for row in soup.find_all('blockquote'):
+        for string in row.find_all('a'):
+            f.write(string.text)
+
+    f.close()
+    
+    return filename
+
+#=====================================================================================================
+
+# My code starts here:
+
+def main():
+    print("Program Started...")
+    print("Get comfortable, this takes a while...")
+
+    # All Lists needed
+    all_text_list = []            # all words before tokenization
+    all_file_names = []           # all file names for every link
+    all_text_list_tokenized = []  # all words post tokenization
+    landing_url_list = []         # all urls in landing page
+    second_url_list = []          # all urls in first page
+    third_url_list = []           # all urls in second page
+    exclude_list = ['http://shakespeare.mit.edu/news.html','http://shakespeare.palomar.edu/', 'http://www.python.org/~jeremy/','http://tech.mit.edu/', 'http://shakespeare.mit.edu/Shakespeare']
+    
+    '''
+    SCRAPING LANDING PAGE
+    '''
+    landing_html = fetchFromURL('http://shakespeare.mit.edu/') 
+    soup = BeautifulSoup(landing_html, 'html.parser')
+    urls = get_target_urls(landing_html) # Gets urls from landing page
+
+    for item in urls:
+        if item not in exclude_list:
+            landing_url_list.append(item)
+
+    # cleans landing_url_list
+    for item in landing_url_list:
+        if item in exclude_list:
+            landing_url_list.remove(item)
+    #landing_url_list.remove('http://tech.mit.edu/') # had to manually remove this for some reason
+    
+    
+
+    '''
+    SCRAPING SECOND PAGE
+    '''
+    # iterates through links on landing page
+    for landing_url in landing_url_list:
+        landing_url = 'http://shakespeare.mit.edu/' + landing_url # Page after Landing page
+        second_html = fetchFromURL(landing_url)
+        second_soup = BeautifulSoup(second_html, 'html.parser')
+        urls = get_second_target(second_html) #gets urls from page after landing page
+
+
+        
+        if len(urls) == 0: 
+            filename = pull_text(landing_url) 
+            all_file_names.append(filename)
+            
+        
+        else: #only gets it if its one act. Not full.
+            for url in urls:
+                if url != "http://shakespeare.mit.edu/Shakespeare":
+                    if "amazon" not in url:
+                        if "full.html" not in url:
+                            if url not in second_url_list:
+                                second_url = landing_url.replace("index.html", url)
+                                filename = pull_text(second_url)
+                                all_file_names.append(filename)   
+                                                     
+        
+    '''
+    TOEKNIZATION
+    '''
+    print("Tokenizing...")
+    
+    for filename in all_file_names:
+        if filename == 'http://tech.mit.edu/': # IT WONT GO AWAY
+            all_file_names.remove(filename)
+        else:
+            l = open(filename, 'r')
+            contents = l.read()
+            token = nltk.word_tokenize(contents)
+            for filename in token:
+                if filename not in all_text_list_tokenized:
+                    all_text_list_tokenized.append(filename)
+    
+    t = open("all_tokens.txt", "a")
+    for item in all_text_list_tokenized:
+        data = item + "\n"
+        t.write(data)
+
+
+    print("Done.")
+    print("Tokens written to 'all_tokens.txt'")
+    t.close()
+    l.close()
+    
+
+    #print(all_text_list)
+    # use nltk to tokenize
+    # overite all_text_list with tokenized words
+    # write all_text_list to file here            
+main()
