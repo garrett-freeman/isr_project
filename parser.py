@@ -1,3 +1,6 @@
+# In fear of breaking my code and not wanting to run it again,
+# I left all these libraries here. 
+
 import requests
 from requests import get
 from requests.exceptions import RequestException
@@ -110,23 +113,29 @@ def bigram_index():
 
         json.dump(bigram_index, outfile, indent=4)
 
-def search(target):
+def search():
+    # Get term to search
+    target = input("Search: ").lower()
 
+    # Start searching for term
     with open('data.txt', 'r') as json_file:
         data = json.load(json_file)
 
     if target in stoplist:
         print("Error: search item is too vague. Please be more specific.")
-        main()
+        search()
 
     elif target in data:
         print(data[target]["location"])
+        main()
 
+    # Spell correction
     else:
         word = '$' + target 
         word = list(word)
         bigram_list = []
-        correction = []
+        possible_correction = []
+        suggested = []
 
         i = 0
         while i != len(word):
@@ -145,40 +154,26 @@ def search(target):
                 with open('bigram_index.txt', 'r') as json_bigram:
                     bigrams = json.load(json_bigram)
 
-                count = 0
                 if bigram in bigrams:
                     for item in bigrams[bigram]['words']:
-                        
-                        if count == 8:
-                            break
 
-                        elif word in stoplist:
+                        if word in stoplist:
                             print("Search is too vague, please try another word.")
-                            main()
+                            
 
                         else:
-                            
-                            if nltk.jaccard_distance(set(word), set(item)) < .6:
-                                if word not in stoplist:
-                                    correction.append(item)
-                            
-                            count += 1  
-
-                        #print(bigrams[bigram]['words'])
+                            if item not in possible_correction:
+                                possible_correction.append(item)
+                
+            for item in possible_correction:
+                if nltk.jaccard_distance(set(word), set(item)) < .3:
+                    if item in suggested:
+                        continue
+                    else:
+                        suggested.append(item) 
             
-            print("Invalid word. Did you mean: " + ", ".join(correction))
-            main()
-
-    task = input('Search another term (y/n)? ') 
-    task = task.lower()
-
-    if task == 'y':
-        main()
-
-    else:
-        print('Goodbye.')
-
-
+        print("Did you mean " + ", ".join(suggested) + "?")
+        search()
 
 def getAll(target):
 
@@ -269,9 +264,19 @@ def main():
     #indexing_terms()
 
     #bigram_index()
-
-    term = input("Search: ")
-    term = term.lower()
-    search(term)
     
+    valid_input = ['n', 'y']
+
+    task = input('Search a term (y/n)? ').lower()
+
+    if task not in valid_input:
+        print('Invalid input, please try again...')
+        main()
+
+    elif task == 'n':
+        print('Goodbye.')
+
+    else:
+        search()
+               
 main()
